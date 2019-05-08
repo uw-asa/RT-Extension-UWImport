@@ -1,21 +1,21 @@
 use strict;
 use warnings;
 package RT::Extension::GWSImport;
+use base qw(Class::Accessor);
 
 our $VERSION = '0.01';
 
 =head1 NAME
 
-RT-Extension-GWSImport - [One line description of module's purpose here]
+RT-Extension-GWSImport - Import groups from UW Groups Web Service
 
 =head1 DESCRIPTION
 
-[Why would someone install this extension? What does it do? What problem
-does it solve?]
+Group import modeled after RT::LDAPImport
 
 =head1 RT VERSION
 
-Works with RT [What versions of RT is this known to work with?]
+Works with RT 4.4.4
 
 [Make sure to use requires_rt and rt_too_new in Makefile.PL]
 
@@ -47,18 +47,7 @@ Add this line:
 
 =head1 AUTHOR
 
-Best Practical Solutions, LLC E<lt>modules@bestpractical.comE<gt>
-
-=for html <p>All bugs should be reported via email to <a
-href="mailto:bug-RT-Extension-GWSImport@rt.cpan.org">bug-RT-Extension-GWSImport@rt.cpan.org</a>
-or via the web at <a
-href="http://rt.cpan.org/Public/Dist/Display.html?Name=RT-Extension-GWSImport">rt.cpan.org</a>.</p>
-
-=for text
-    All bugs should be reported via email to
-        bug-RT-Extension-GWSImport@rt.cpan.org
-    or via the web at
-        http://rt.cpan.org/Public/Dist/Display.html?Name=RT-Extension-GWSImport
+Bradley Bell E<lt>bradleyb@uw.eduE<gt>
 
 =head1 LICENSE AND COPYRIGHT
 

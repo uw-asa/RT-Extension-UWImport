@@ -1,0 +1,37 @@
+NAME
+    RT-Extension-GWSImport - Import groups from UW Groups Web Service
+
+DESCRIPTION
+    Group import modeled after RT::LDAPImport
+
+RT VERSION
+    Works with RT 4.4.4
+
+    [Make sure to use requires_rt and rt_too_new in Makefile.PL]
+
+INSTALLATION
+    perl Makefile.PL
+    make
+    make install
+        May need root permissions
+
+    Edit your /opt/rt4/etc/RT_SiteConfig.pm
+        Add this line:
+
+            Plugin('RT::Extension::GWSImport');
+
+    Clear your mason cache
+            rm -rf /opt/rt4/var/mason_data/obj
+
+    Restart your webserver
+
+AUTHOR
+    Bradley Bell <bradleyb@uw.edu>
+
+LICENSE AND COPYRIGHT
+    This software is Copyright (c) 2019 by Bradley Bell
+
+    This is free software, licensed under:
+
+      The GNU General Public License, Version 2, June 1991
+
