@@ -85,19 +85,14 @@ Init(
     \%OPT,
     'debug',
     'import',
-    'users!', 'groups!');
+);
 
 my $importer = RT::Extension::UWImport->new;
 
 if ($OPT{import}) {
-    if ($OPT{users}) {
-        print "Starting import\n";
-        $importer->import_users(import => 1);
-    }
-    if ($OPT{groups}) {
-        print "Starting group import\n";
-        $importer->import_groups(import => 1);
-    }
+    print "Starting import\n";
+    $importer->import_groups(import => 1);
+
     print "Finished import\n";
 } else {
     print <<TESTING;
@@ -105,11 +100,9 @@ Running test import, no data will be changed
 Rerun command with --import to perform the import
 Rerun command with --verbose for more information
 TESTING
-    $importer->import_users if $OPT{users};
-    if ($OPT{groups}) {
-        print "Testing group import\n";
-        $importer->import_groups();
-    }
+    print "Testing import\n";
+    $importer->import_groups();
+
     print "Finished test\n";
 }
 
@@ -117,7 +110,7 @@ __END__
 
 =head1 NAME
 
-rt-uwimport - Import users and groups from external sources
+rt-uwimport - Import users and groups from UW GWS and PWS
 
 =head1 SYNOPSIS
 
@@ -138,14 +131,6 @@ Without this flag, merely does a dry-run of the import.
 =item C<--verbose>
 
 Log more data when importing.
-
-=item C<--no-users>
-
-Skip user import.
-
-=item C<--no-groups>
-
-Skip group import.
 
 =back
 
