@@ -95,21 +95,24 @@ Running the Import
     create a lot of users or groups in your RT instance.
 
 METHODS
-  connect_ua
+  connect_gws
     Relies on the config variable $GWSOptions being set in your RT Config.
 
      Set($GWSOptions, []);
 
-  _run_search
-    Executes a search using the provided base and filter.
+  connect_pws
+    Relies on the config variable $PWSOptions being set in your RT Config.
 
-    Will connect to GWS server using connect_ua.
+     Set($PWSOptions, []);
 
-    Returns an array of LWP::UserAgent::Entry objects, possibly consolidated
-    from multiple GWS pages.
+  _gws_search
+    Returns an array of GWS groups or members.
+
+  _pws_search
+    Returns a PWS person object.
 
   import_users import => 1|0
-    Takes the results of the search from run_search and maps attributes from
+    Takes the results of the search from pws_search and maps attributes from
     GWS into RT::User attributes using $GWSMapping. Creates RT users if they
     don't already exist.
 
@@ -140,7 +143,7 @@ METHODS
     We have found a user to attempt to import; returns the RT::User object
     if it was found (or created), undef if not.
 
-  _cache_user gws_entry => Net::GWS::Entry, [user => { ... }]
+  _cache_user pws_entry => PWS Entry, [user => { ... }]
     Adds the user to a global cache which is used when importing groups
     later.
 
@@ -149,10 +152,6 @@ METHODS
     _build_user_object itself.
 
     Returns the user Name.
-
-  _check_gws_mapping
-    Returns true is there is an GWSMapping configured, returns false, logs
-    an error and disconnects from gws if there is no mapping.
 
   _build_user_object
     Utility method which wraps _build_object to provide sane defaults for
@@ -178,11 +177,11 @@ METHODS
     Arguments are just passed into "_parse_gws_mapping".
 
    _parse_gws_mapping
-    Internal helper method that maps an GWS entry to a hash according to
+    Internal helper method that maps a GWS entry to a hash according to
     passed arguments. Takes named arguments:
 
     gws_entry
-        Net::GWS::Entry instance that should be mapped.
+        GWS entry instance that should be mapped.
 
     only
         Optional regular expression. If passed then only matching entries in
@@ -292,15 +291,10 @@ METHODS
 
    add_group_members
     Iterate over the list of values in the Member_Attr GWS entry. Look up
-    the appropriate username from GWS. Add those users to the group. Remove
+    the appropriate username from PWS. Add those users to the group. Remove
     members of the RT Group who are no longer members of the GWS group.
 
   _show_group
     Show debugging information about the group record we're going to import
     when the groups reruns us with --import.
-
-   disconnect_gws
-    Disconnects from the GWS server.
-
-    Takes no arguments, returns nothing.
 

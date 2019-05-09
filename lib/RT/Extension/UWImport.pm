@@ -2,7 +2,7 @@ use strict;
 use warnings;
 package RT::Extension::UWImport;
 use base qw(Class::Accessor);
-__PACKAGE__->mk_accessors(qw(_ua _group _users));
+__PACKAGE__->mk_accessors(qw(_gws _pws _group _users));
 use Carp;
 use LWP::UserAgent::JSON();
 use Data::Dumper;
@@ -134,7 +134,7 @@ create a lot of users or groups in your RT instance.
 
 =head1 METHODS
 
-=head2 connect_ua
+=head2 connect_gws
 
 Relies on the config variable C<$GWSOptions> being set in your RT Config.
 
@@ -142,31 +142,45 @@ Relies on the config variable C<$GWSOptions> being set in your RT Config.
 
 =cut
 
-sub connect_ua {
+sub connect_gws {
     my $self = shift;
 
     $RT::GWSOptions = [] unless $RT::GWSOptions;
     my $gws = LWP::UserAgent::JSON->new(@$RT::GWSOptions);
 
-    $self->_ua($gws);
+    $self->_gws($gws);
     return $gws;
 }
 
 
-=head2 _run_search
+=head2 connect_pws
 
-Executes a search using the provided base and filter.
+Relies on the config variable C<$PWSOptions> being set in your RT Config.
 
-Will connect to GWS server using C<connect_ua>.
-
-Returns an array of L<LWP::UserAgent::Entry> objects, possibly consolidated from
-multiple GWS pages.
+ Set($PWSOptions, []);
 
 =cut
 
-sub _run_search {
+sub connect_pws {
     my $self = shift;
-    my $gws = $self->_ua||$self->connect_ua;
+
+    $RT::PWSOptions = [] unless $RT::PWSOptions;
+    my $pws = LWP::UserAgent::JSON->new(@$RT::PWSOptions);
+
+    $self->_pws($pws);
+    return $pws;
+}
+
+
+=head2 _gws_search
+
+Returns an array of GWS groups or members.
+
+=cut
+
+sub _gws_search {
+    my $self = shift;
+    my $gws = $self->_gws||$self->connect_gws;
     my %args = @_;
 
     unless ($gws) {
@@ -177,11 +191,10 @@ sub _run_search {
     my $search = $args{search};
     my (@results);
 
-    $RT::Logger->debug(join('/', ($RT::GWSHost, $search)));
     my $result = $gws->get(join('/', ($RT::GWSHost, $search)));
 
     if (! $result->is_success) {
-        $RT::Logger->error("GWS search failed " . $result->message);
+        $RT::Logger->error("GWS search " . $search . " failed: " . $result->message);
     }
 
     my $content = $result->json_content;
@@ -193,9 +206,39 @@ sub _run_search {
 }
 
 
+=head2 _pws_search
+
+Returns a PWS person object.
+
+=cut
+
+sub _pws_search {
+    my $self = shift;
+    my $pws = $self->_pws||$self->connect_pws;
+    my %args = @_;
+
+    unless ($pws) {
+        $RT::Logger->error("fetching a PWS connection failed");
+        return;
+    }
+
+    my $search = $args{search};
+    my (@results);
+
+    my $result = $pws->get(join('/', ($RT::PWSHost, $search)));
+
+    if (! $result->is_success) {
+        $RT::Logger->warning("PWS search " . $search . " failed: " . $result->message);
+        return undef;
+    }
+
+    return $result->json_content;
+}
+
+
 =head2 import_users import => 1|0
 
-Takes the results of the search from run_search
+Takes the results of the search from pws_search
 and maps attributes from GWS into C<RT::User> attributes
 using C<$GWSMapping>.
 Creates RT users if they don't already exist.
@@ -228,16 +271,6 @@ setting C<$GWSCreatePrivileged> to 1.
 
 =cut
 
-sub import_users {
-    my $self = shift;
-    my %args = @_;
-
-    $self->_users({});
-
-    my @results = $self->run_user_search;
-    return $self->_import_users( %args, users => \@results );
-}
-
 sub _import_users {
     my $self = shift;
     my %args = @_;
@@ -248,13 +281,10 @@ sub _import_users {
         return;
     }
 
-    my $mapping = $RT::GWSMapping;
-    return unless $self->_check_gws_mapping( mapping => $mapping );
-
     my $done = 0; my $count = scalar @$users;
     while (my $entry = shift @$users) {
-        my $user = $self->_build_user_object( gws_entry => $entry );
-        $self->_import_user( user => $user, gws_entry => $entry, import => $args{import} );
+        my $user = $self->_build_user_object( pws_entry => $entry );
+        $self->_import_user( user => $user, pws_entry => $entry, import => $args{import} );
         $done++;
         $RT::Logger->debug("Imported $done/$count users");
     }
@@ -294,7 +324,7 @@ sub _import_user {
     return $args{user};
 }
 
-=head2 _cache_user gws_entry => Net::GWS::Entry, [user => { ... }]
+=head2 _cache_user pws_entry => PWS Entry, [user => { ... }]
 
 Adds the user to a global cache which is used when importing groups later.
 
@@ -309,11 +339,11 @@ Returns the user Name.
 sub _cache_user {
     my $self = shift;
     my %args = (@_);
-    my $user = $args{user} || $self->_build_user_object( gws_entry => $args{gws_entry} );
+    my $user = $args{user} || $self->_build_user_object( pws_entry => $args{pws_entry} );
 
     $self->_users({}) if not defined $self->_users;
 
-    my $membership_key  = $args{gws_entry}->{id};
+    my $membership_key  = $args{pws_entry}->{UWNetID};
 
     return $self->_users->{lc $membership_key} = $user->{Name};
 }
@@ -336,28 +366,6 @@ sub _show_user_info {
         $old_value ||= 'unset';
         $RT::Logger->debug( "\t$key\t$old_value => $user->{$key}" );
     }
-    #$RT::Logger->debug(Dumper($user));
-}
-
-=head2 _check_gws_mapping
-
-Returns true is there is an C<GWSMapping> configured,
-returns false, and logs an error if there is no mapping.
-
-=cut
-
-sub _check_gws_mapping {
-    my $self = shift;
-    my %args = @_;
-    my $mapping = $args{mapping};
-
-    my @rtfields = keys %{$mapping};
-    unless ( @rtfields ) {
-        $RT::Logger->error("No mapping found, can't import");
-        return;
-    }
-
-    return 1;
 }
 
 =head2 _build_user_object
@@ -370,14 +378,17 @@ exists in the returned object.
 
 sub _build_user_object {
     my $self = shift;
-    my $user = $self->_build_object(
-        skip    => qr/(?i)^(?:User)?CF\./,
-        mapping => { Name => 'id' },
-        @_
-    );
-    $user->{Name} ||= $user->{EmailAddress};
+    my %args = @_;
+    my $entry = $args{pws_entry};
+
+    my $user = {
+        Name        => $entry->{'UWNetID'},
+        RealName    => $entry->{'DisplayName'} || '',
+    };
+    $user->{EmailAddress} ||= $entry->{UWNetID} . '@uw.edu';
     return $user;
 }
+
 
 =head2 _build_object
 
@@ -414,14 +425,14 @@ sub _build_object {
 
 =head3 _parse_gws_mapping
 
-Internal helper method that maps an GWS entry to a hash
+Internal helper method that maps a GWS entry to a hash
 according to passed arguments. Takes named arguments:
 
 =over 4
 
 =item gws_entry
 
-L<Net::GWS::Entry> instance that should be mapped.
+GWS entry instance that should be mapped.
 
 =item only
 
@@ -506,6 +517,7 @@ sub _parse_gws_mapping {
 
     return \%res;
 }
+
 
 =head2 create_rt_user
 
@@ -647,6 +659,7 @@ sub setup_group  {
 
     $self->_group($group);
 }
+
 
 =head3 add_custom_field_value
 
@@ -793,7 +806,7 @@ sub import_groups {
             Member_Attr => [],
         );
 
-        my @members = $self->_run_search(search => 'group/' . $group{Name} . '/effective_member');
+        my @members = $self->_gws_search(search => 'group/' . $group{Name} . '/effective_member');
         while (my $member = shift @members) {
             if ($member->{'type'} eq 'uwnetid') {
                 push $group{Member_Attr}, $member;
@@ -821,7 +834,7 @@ sub run_group_search {
         $RT::Logger->warn("Not running a group import, configuration not set");
         return;
     }
-    $self->_run_search(
+    $self->_gws_search(
         search => $RT::GWSGroupSearch
     );
 
@@ -1031,7 +1044,7 @@ sub find_rt_group_by_gws_id {
 =head3 add_group_members
 
 Iterate over the list of values in the C<Member_Attr> GWS entry.
-Look up the appropriate username from GWS.
+Look up the appropriate username from PWS.
 Add those users to the group.
 Remove members of the RT Group who are no longer members
 of the GWS group.
@@ -1053,31 +1066,21 @@ sub add_group_members {
         return;
     }
 
-    if ($RT::UWImportGroupMembers) {
+    if ($RT::GWSImportGroupMembers) {
         $RT::Logger->debug("Importing members of group $groupname");
         my @entries;
-        my $attr = lc($RT::GWSGroupMapping->{Member_Attr_Value} || 'dn');
 
-        # Lookup each DN's full entry, or...
-        if ($attr eq 'dn') {
-            @entries = grep defined, map {
-                my @results = $self->_run_search(
-                    scope   => 'base',
-                    base    => $_,
-                    filter  => $RT::GWSFilter,
-                );
-                $results[0]
-            } @$members;
-        }
-        # ...or find all the entries in a single search by attribute.
-        else {
-            # I wonder if this will run into filter length limits? -trs, 22 Jan 2014
-            my $members = join "", map { "($attr=" . escape_filter_value($_) . ")" } @$members;
-            @entries = $self->_run_search(
-                base   => $RT::GWSBase,
-                filter => "(&$RT::GWSFilter(|$members))",
+        # Lookup each netid's full entry
+        foreach my $member (@$members) {
+            my $entry = $self->_pws_search(
+                search  => 'person/' . $member->{'id'} . '/full.json',
             );
+            $entry ||= {
+                UWNetID => $member->{id},
+            };
+            push @entries, $entry;
         }
+
         $self->_import_users(
             import  => $args{import},
             users   => \@entries,
@@ -1104,7 +1107,7 @@ sub add_group_members {
         if (exists $users->{lc $member}) {
             next unless $username = $users->{lc $member};
         } else {
-            $username = $self->_cache_user( gws_entry => $member );
+            $username = $self->_cache_user( pws_entry => { UWNetID => $member->{id} } );
         }
         if ( delete $rt_group_members{$username} ) {
             $RT::Logger->debug("\t$username\tin RT and GWS");
