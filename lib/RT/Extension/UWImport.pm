@@ -245,7 +245,6 @@ sub _import_users {
 
     unless ( @$users ) {
         $RT::Logger->debug("No users found, no import");
-        $self->disconnect_ua;
         return;
     }
 
@@ -343,8 +342,7 @@ sub _show_user_info {
 =head2 _check_gws_mapping
 
 Returns true is there is an C<GWSMapping> configured,
-returns false, logs an error and disconnects from
-gws if there is no mapping.
+returns false, and logs an error if there is no mapping.
 
 =cut
 
@@ -356,7 +354,6 @@ sub _check_gws_mapping {
     my @rtfields = keys %{$mapping};
     unless ( @rtfields ) {
         $RT::Logger->error("No mapping found, can't import");
-        $self->disconnect_ua;
         return;
     }
 
@@ -784,7 +781,6 @@ sub import_groups {
     my @results = $self->run_group_search;
     unless ( @results ) {
         $RT::Logger->debug("No results found, no group import");
-        $self->disconnect_ua;
         return;
     }
 
@@ -1185,24 +1181,5 @@ sub _show_group_info {
     }
 }
 
-
-=head3 disconnect_gws
-
-Disconnects from the GWS server.
-
-Takes no arguments, returns nothing.
-
-=cut
-
-sub disconnect_gws {
-    my $self = shift;
-    my $gws = $self->_gws;
-    return unless $gws;
-
-    $gws->unbind;
-    $gws->disconnect;
-    $self->_gws(undef);
-    return;
-}
 
 1;
