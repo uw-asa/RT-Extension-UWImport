@@ -1,8 +1,8 @@
 use inc::Module::Install;
 
-RTx     'RT-Extension-GWSImport';
+RTx     'RT-Extension-UWImport';
 license 'gpl_2';
-repository 'https://github.com/uw-it-cte/rt-extension-gwsimport';
+repository 'https://github.com/uw-it-cte/rt-extension-uwimport';
 
 requires_rt '4.2.0';
 rt_too_new '4.6.0';
@@ -26,7 +26,7 @@ substitute(
     {
         sufix => '.in'
     },
-    qw(bin/rt-gwsimport),
+    qw(bin/rt-uwimport),
 );
 
 sign;

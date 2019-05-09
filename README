@@ -1,8 +1,9 @@
 NAME
-    RT-Extension-GWSImport - Import groups from UW Groups Web Service
+    RT-Extension-UWImport - Import groups and users from the University of
+    Washington's Groups and Person Web Services
 
 DESCRIPTION
-    Group import modeled after RT::LDAPImport
+    Modeled after RT::LDAPImport
 
 RT VERSION
     Works with RT 4.4.4
@@ -18,7 +19,7 @@ INSTALLATION
     Edit your /opt/rt4/etc/RT_SiteConfig.pm
         Add this line:
 
-            Plugin('RT::Extension::GWSImport');
+            Plugin('RT::Extension::UWImport');
 
     Clear your mason cache
             rm -rf /opt/rt4/var/mason_data/obj
@@ -34,4 +35,272 @@ LICENSE AND COPYRIGHT
     This is free software, licensed under:
 
       The GNU General Public License, Version 2, June 1991
+
+SYNOPSIS
+    In RT_SiteConfig.pm:
+
+        Set($GWSHost, 'groups.uw.edu');
+
+        Set($PWSHost, 'groups.uw.edu');
+
+    Running the import:
+
+        # Run a test import
+        /opt/rt4/local/plugins/bin/rt-uwimport --verbose > uwimport.debug 2>&1
+    
+        # Run for real, possibly put in cron
+        /opt/rt4/local/plugins/bin/rt-uwimport --import
+
+CONFIGURATION
+    All of the configuration for the importer goes in your RT_SiteConfig.pm
+    file.
+
+    Set($GWSHost, 'groups.uw.edu');
+        Hostname
+
+Mapping Groups Between RT and GWS
+    If you are using the importer, you likely want to manage access via GWS
+    by putting people in groups like 'DBAs' and 'IT Support', but also have
+    groups for other non-RT related things. In this case, you won't want to
+    create all of your GWS groups in RT. To limit the groups that get
+    mirrored, construct your $GWSGroupFilter with all of the RT groups you
+    want to mirror from GWS.
+
+    The importer will then import only the groups that match. In this case,
+    import means:
+
+    *   Verifying the group is in AD;
+
+    *   Creating the group in RT if it doesn't exist;
+
+    *   Populating the group with the members identified in AD;
+
+    The import script will also issue a warning if a user isn't found in RT,
+    but this should only happen when testing. When running with --import on,
+    users are created before groups are processed, so all users (group
+    members) should exist unless there are inconsistencies in your GWS
+    configuration.
+
+Running the Import
+    Executing rt-uwimport will run a test that connects to your GWS server
+    and prints out a list of the users found. To see more about these users,
+    and to see more general debug information, include the --verbose flag.
+
+    That debug information is also sent to the RT log with the debug level.
+    Errors are logged to the screen and to the RT log.
+
+    Executing rt-uwimport with the --import flag will cause it to import
+    users into your RT database. It is recommended that you make a database
+    backup before doing this. If your filters aren't set properly this could
+    create a lot of users or groups in your RT instance.
+
+METHODS
+  connect_ua
+    Relies on the config variable $GWSOptions being set in your RT Config.
+
+     Set($GWSOptions, []);
+
+  _run_search
+    Executes a search using the provided base and filter.
+
+    Will connect to GWS server using connect_ua.
+
+    Returns an array of LWP::UserAgent::Entry objects, possibly consolidated
+    from multiple GWS pages.
+
+  import_users import => 1|0
+    Takes the results of the search from run_search and maps attributes from
+    GWS into RT::User attributes using $GWSMapping. Creates RT users if they
+    don't already exist.
+
+    With no arguments, only prints debugging information. Pass --import to
+    actually change data.
+
+    $GWSMapping> should be set in your RT_SiteConfig.pm file and look like
+    this.
+
+     Set($GWSMapping, { RTUserField => GWSField, RTUserField => GWSField });
+
+    RTUserField is the name of a field on an RT::User object GWSField can be
+    a simple scalar and that attribute will be looked up in GWS.
+
+    It can also be an arrayref, in which case each of the elements will be
+    evaluated in turn. Scalars will be looked up in GWS and concatenated
+    together with a single space.
+
+    If the value is a sub reference, it will be executed. The sub should
+    return a scalar, which will be examined. If it is a scalar, the value
+    will be looked up in GWS. If it is an arrayref, the values will be
+    concatenated together with a single space.
+
+    By default users are created as Unprivileged, but you can change this by
+    setting $GWSCreatePrivileged to 1.
+
+  _import_user
+    We have found a user to attempt to import; returns the RT::User object
+    if it was found (or created), undef if not.
+
+  _cache_user gws_entry => Net::GWS::Entry, [user => { ... }]
+    Adds the user to a global cache which is used when importing groups
+    later.
+
+    Optionally takes a second argument which is a user data object returned
+    by _build_user_object. If not given, _cache_user will call
+    _build_user_object itself.
+
+    Returns the user Name.
+
+  _check_gws_mapping
+    Returns true is there is an GWSMapping configured, returns false, logs
+    an error and disconnects from gws if there is no mapping.
+
+  _build_user_object
+    Utility method which wraps _build_object to provide sane defaults for
+    building users. It also tries to ensure a Name exists in the returned
+    object.
+
+  _build_object
+    Internal method - a wrapper around "_parse_gws_mapping" that flattens
+    results turning every value into a scalar.
+
+    The following:
+
+        [
+            [$first_value1, ... ],
+            [$first_value2],
+            $scalar_value,
+        ]
+
+    Turns into:
+
+        "$first_value1 $first_value2 $scalar_value"
+
+    Arguments are just passed into "_parse_gws_mapping".
+
+   _parse_gws_mapping
+    Internal helper method that maps an GWS entry to a hash according to
+    passed arguments. Takes named arguments:
+
+    gws_entry
+        Net::GWS::Entry instance that should be mapped.
+
+    only
+        Optional regular expression. If passed then only matching entries in
+        the mapping will be processed.
+
+    skip
+        Optional regular expression. If passed then matching entries in the
+        mapping will be skipped.
+
+    mapping
+        Hash that defines how to map. Key defines position in the result.
+        Value can be one of the following:
+
+        If we're passed a scalar or an array reference then value is:
+
+            [
+                [value1_of_attr1, value2_of_attr1],
+                [value1_of_attr2, value2_of_attr2],
+            ]
+
+        If we're passed a subroutine reference as value or as an element of
+        array, it executes the code and returned list is pushed into results
+        array:
+
+            [
+                @result_of_function,
+            ]
+
+        All arguments are passed into the subroutine as well as a few more.
+        See more in description of $GWSMapping option.
+
+    Returns hash reference with results, each value is an array with
+    elements either scalars or arrays as described above.
+
+  create_rt_user
+    Takes a hashref of args to pass to RT::User::Create Will try loading the
+    user and will only create a new user if it can't find an existing user
+    with the Name or EmailAddress arg passed in.
+
+    If the $GWSUpdateUsers variable is true, data in RT will be clobbered
+    with data in GWS. Otherwise we will skip to the next user.
+
+    If $GWSUpdateOnly is true, we will not create new users but we will
+    update existing ones.
+
+  add_user_to_group
+    Adds new users to the group specified in the $GWSGroupName variable
+    (defaults to 'Imported from GWS'). You can avoid this if you set
+    $GWSSkipAutogeneratedGroup.
+
+  setup_group
+    Pulls the $GWSGroupName object out of the DB or creates it if we need to
+    do so.
+
+   add_custom_field_value
+    Adds values to a Select (one|many) Custom Field. The Custom Field should
+    already exist, otherwise this will throw an error and not import any
+    data.
+
+    This could probably use some caching.
+
+   update_object_custom_field_values
+    Adds CF values to an object (currently only users). The Custom Field
+    should already exist, otherwise this will throw an error and not import
+    any data.
+
+    Note that this code only adds values at the moment, which on single
+    value CFs will remove any old value first. Multiple value CFs may behave
+    not quite how you expect.
+
+  import_groups import => 1|0
+    Takes the results of the search from run_group_search and maps
+    attributes from GWS into RT::Group attributes using $GWSGroupMapping.
+
+    Creates groups if they don't exist.
+
+    Removes users from groups if they have been removed from the group on
+    GWS.
+
+    With no arguments, only prints debugging information. Pass --import to
+    actually change data.
+
+   run_group_search
+    Set up the appropriate arguments for a listing of users.
+
+  _import_group
+    The user has run us with --import, so bring data in.
+
+  create_rt_group
+    Takes a hashref of args to pass to RT::Group::Create Will try loading
+    the group and will only create a new group if it can't find an existing
+    group with the Name or EmailAddress arg passed in.
+
+    If $GWSUpdateOnly is true, we will not create new groups but we will
+    update existing ones.
+
+    There is currently no way to prevent Group data from being clobbered
+    from GWS.
+
+   find_rt_group
+    Loads groups by Name and by the specified GWS id. Attempts to resolve
+    renames and other out-of-sync failures between RT and GWS.
+
+   find_rt_group_by_gws_id
+    Loads an RT::Group by the gws provided id (different from RT's internal
+    group id)
+
+   add_group_members
+    Iterate over the list of values in the Member_Attr GWS entry. Look up
+    the appropriate username from GWS. Add those users to the group. Remove
+    members of the RT Group who are no longer members of the GWS group.
+
+  _show_group
+    Show debugging information about the group record we're going to import
+    when the groups reruns us with --import.
+
+   disconnect_gws
+    Disconnects from the GWS server.
+
+    Takes no arguments, returns nothing.
 

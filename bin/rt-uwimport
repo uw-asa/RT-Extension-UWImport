@@ -69,8 +69,8 @@ BEGIN { # BEGIN RT CMD BOILERPLATE
 }
 
 
-eval { require RT::Extension::GWSImport; 1; } or do {
-    print "Unable to run rt-gwsimport without dependencies.\n";
+eval { require RT::Extension::UWImport; 1; } or do {
+    print "Unable to run rt-uwimport without dependencies.\n";
     print "Rerun configure with the --enable-externalauth option.";
     exit 0;
 };
@@ -87,7 +87,7 @@ Init(
     'import',
     'users!', 'groups!');
 
-my $importer = RT::Extension::GWSImport->new;
+my $importer = RT::Extension::UWImport->new;
 
 if ($OPT{import}) {
     if ($OPT{users}) {
@@ -117,15 +117,15 @@ __END__
 
 =head1 NAME
 
-rt-gwsimport - Import users and groups from external sources
+rt-uwimport - Import users and groups from external sources
 
 =head1 SYNOPSIS
 
-  rt-gwsimport [--import]
+  rt-uwimport [--import]
 
 =head1 DESCRIPTION
 
-See L<RT::Extension::GWSImport> for configuration instructions.
+See L<RT::Extension::UWImport> for configuration instructions.
 
 =head1 OPTIONS
 
