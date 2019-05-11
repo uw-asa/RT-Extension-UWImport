@@ -368,9 +368,7 @@ sub _show_user_info {
 
 =head2 _build_user_object
 
-Utility method which wraps C<_build_object> to provide sane
-defaults for building users.  It also tries to ensure a Name
-exists in the returned object.
+Utility method which builds RT user data from PWS entry.
 
 =cut
 
@@ -380,9 +378,20 @@ sub _build_user_object {
     my $entry = $args{pws_entry};
 
     my $user = {
-        Name        => $entry->{'UWNetID'},
-        RealName    => $entry->{'DisplayName'} || '',
+        Name            => $entry->{UWNetID},
+        RealName        => $entry->{DisplayName},
+        EmailAddress    => $entry->{PersonAffiliations}{EmployeePersonAffiliation}{EmployeeWhitePages}{EmailAddresses}[0],
+        WorkPhone       => $entry->{PersonAffiliations}{EmployeePersonAffiliation}{EmployeeWhitePages}{Phones}[0],
+        MobilePhone     => $entry->{PersonAffiliations}{EmployeePersonAffiliation}{EmployeeWhitePages}{Mobiles}[0],
+        PagerPhone      => $entry->{PersonAffiliations}{EmployeePersonAffiliation}{EmployeeWhitePages}{Pagers}[0],
+        Organization    => $entry->{PersonAffiliations}{EmployeePersonAffiliation}{HomeDepartment},
     };
+
+    # delete empty keys
+    foreach (keys %$user) {
+        delete $user->{$_} unless defined $user->{$_};
+    }
+
     $user->{EmailAddress} ||= $entry->{UWNetID} . '@uw.edu';
     return $user;
 }
