@@ -318,8 +318,6 @@ sub _import_user {
     return unless $args{user};
 
     $self->add_user_to_group( %args );
-    $self->add_custom_field_value( %args );
-    $self->update_object_custom_field_values( %args, object => $args{user} );
 
     return $args{user};
 }
@@ -390,135 +388,6 @@ sub _build_user_object {
 }
 
 
-=head2 _build_object
-
-Internal method - a wrapper around L</_parse_gws_mapping>
-that flattens results turning every value into a scalar.
-
-The following:
-
-    [
-        [$first_value1, ... ],
-        [$first_value2],
-        $scalar_value,
-    ]
-
-Turns into:
-
-    "$first_value1 $first_value2 $scalar_value"
-
-Arguments are just passed into L</_parse_gws_mapping>.
-
-=cut
-
-sub _build_object {
-    my $self = shift;
-    my %args = @_;
-
-    my $res = $self->_parse_gws_mapping( %args );
-    foreach my $value ( values %$res ) {
-        @$value = map { ref $_ eq 'ARRAY'? $_->[0] : $_ } @$value;
-        $value = join ' ', grep defined && length, @$value;
-    }
-    return $res;
-}
-
-=head3 _parse_gws_mapping
-
-Internal helper method that maps a GWS entry to a hash
-according to passed arguments. Takes named arguments:
-
-=over 4
-
-=item gws_entry
-
-GWS entry instance that should be mapped.
-
-=item only
-
-Optional regular expression. If passed then only matching
-entries in the mapping will be processed.
-
-=item skip
-
-Optional regular expression. If passed then matching
-entries in the mapping will be skipped.
-
-=item mapping
-
-Hash that defines how to map. Key defines position
-in the result. Value can be one of the following:
-
-If we're passed a scalar or an array reference then
-value is:
-
-    [
-        [value1_of_attr1, value2_of_attr1],
-        [value1_of_attr2, value2_of_attr2],
-    ]
-
-If we're passed a subroutine reference as value or
-as an element of array, it executes the code
-and returned list is pushed into results array:
-
-    [
-        @result_of_function,
-    ]
-
-All arguments are passed into the subroutine as well
-as a few more. See more in description of C<$GWSMapping>
-option.
-
-=back
-
-Returns hash reference with results, each value is
-an array with elements either scalars or arrays as
-described above.
-
-=cut
-
-sub _parse_gws_mapping {
-    my $self = shift;
-    my %args = @_;
-
-    my $mapping = $args{mapping};
-
-    my %res;
-    foreach my $rtfield ( sort keys %$mapping ) {
-        next if $args{'skip'} && $rtfield =~ $args{'skip'};
-        next if $args{'only'} && $rtfield !~ $args{'only'};
-
-        my $gws_field = $mapping->{$rtfield};
-        my @list = grep defined && length, ref $gws_field eq 'ARRAY'? @$gws_field : ($gws_field);
-        unless (@list) {
-            $RT::Logger->error("Invalid GWS mapping for $rtfield, no defined fields");
-            next;
-        }
-
-        my @values;
-        foreach my $e (@list) {
-            if (ref $e eq 'CODE') {
-                push @values, $e->(
-                    %args,
-                    self => $self,
-                    rt_field => $rtfield,
-                    gws_field => $gws_field,
-                    result => \%res,
-                );
-            } elsif (ref $e) {
-                $RT::Logger->error("Invalid type of GWS mapping for $rtfield, value is $e");
-                next;
-            } else {
-                push @values, grep defined, $args{'gws_entry'}->{$e};
-            }
-        }
-        $res{ $rtfield } = \@values;
-    }
-
-    return \%res;
-}
-
-
 =head2 create_rt_user
 
 Takes a hashref of args to pass to C<RT::User::Create>
@@ -526,11 +395,11 @@ Will try loading the user and will only create a new
 user if it can't find an existing user with the C<Name>
 or C<EmailAddress> arg passed in.
 
-If the C<$GWSUpdateUsers> variable is true, data in RT
+If the C<$PWSUpdateUsers> variable is true, data in RT
 will be clobbered with data in GWS.  Otherwise we
 will skip to the next user.
 
-If C<$GWSUpdateOnly> is true, we will not create new users
+If C<$PWSUpdateOnly> is true, we will not create new users
 but we will update existing ones.
 
 =cut
@@ -544,7 +413,7 @@ sub create_rt_user {
 
     if ($user_obj->Id) {
         my $message = "User $user->{Name} already exists as ".$user_obj->Id;
-        if ($RT::GWSUpdateUsers || $RT::GWSUpdateOnly) {
+        if ($RT::PWSUpdateUsers || $RT::PWSUpdateOnly) {
             $RT::Logger->debug("$message, updating their data");
             if ($args{import}) {
                 my @results = $user_obj->Update( ARGSRef => $user, AttributesRef => [keys %$user] );
@@ -557,7 +426,7 @@ sub create_rt_user {
             $RT::Logger->debug("$message, skipping");
         }
     } else {
-        if ( $RT::GWSUpdateOnly ) {
+        if ( $RT::PWSUpdateOnly ) {
             $RT::Logger->debug("User $user->{Name} doesn't exist in RT, skipping");
             return;
         } else {
@@ -661,117 +530,6 @@ sub setup_group  {
 }
 
 
-=head3 add_custom_field_value
-
-Adds values to a Select (one|many) Custom Field.
-The Custom Field should already exist, otherwise
-this will throw an error and not import any data.
-
-This could probably use some caching.
-
-=cut
-
-sub add_custom_field_value {
-    my $self = shift;
-    my %args = @_;
-    my $user = $args{user};
-
-    my $data = $self->_build_object(
-        %args,
-        only => qr/^CF\.(.+)$/i,
-        mapping => $RT::GWSMapping,
-    );
-
-    foreach my $rtfield ( keys %$data ) {
-        next unless $rtfield =~ /^CF\.(.+)$/i;
-        my $cf_name = $1;
-
-        my $cfv_name = $data->{ $rtfield }
-            or next;
-
-        my $cf = RT::CustomField->new($RT::SystemUser);
-        my ($status, $msg) = $cf->Load($cf_name);
-        unless ($status) {
-            $RT::Logger->error("Couldn't load CF [$cf_name]: $msg");
-            next;
-        }
-
-        my $cfv = RT::CustomFieldValue->new($RT::SystemUser);
-        $cfv->LoadByCols( CustomField => $cf->id,
-                          Name => $cfv_name );
-        if ($cfv->id) {
-            $RT::Logger->debug("Custom Field '$cf_name' already has '$cfv_name' for a value");
-            next;
-        }
-
-        if ($args{import}) {
-            ($status, $msg) = $cf->AddValue( Name => $cfv_name );
-            if ($status) {
-                $RT::Logger->debug("Added '$cfv_name' to Custom Field '$cf_name' [$msg]");
-            } else {
-                $RT::Logger->error("Couldn't add '$cfv_name' to '$cf_name' [$msg]");
-            }
-        } else {
-            $RT::Logger->debug("Would add '$cfv_name' to Custom Field '$cf_name'");
-        }
-    }
-
-    return;
-
-}
-
-=head3 update_object_custom_field_values
-
-Adds CF values to an object (currently only users).  The Custom Field should
-already exist, otherwise this will throw an error and not import any data.
-
-Note that this code only B<adds> values at the moment, which on single value
-CFs will remove any old value first.  Multiple value CFs may behave not quite
-how you expect.
-
-=cut
-
-sub update_object_custom_field_values {
-    my $self = shift;
-    my %args = @_;
-    my $obj  = $args{object};
-
-    my $data = $self->_build_object(
-        %args,
-        only => qr/^UserCF\.(.+)$/i,
-        mapping => $RT::GWSMapping,
-    );
-
-    foreach my $rtfield ( sort keys %$data ) {
-        # XXX TODO: accept GroupCF when we call this from group_import too
-        next unless $rtfield =~ /^UserCF\.(.+)$/i;
-        my $cf_name = $1;
-        my $value = $data->{$rtfield};
-        $value = '' unless defined $value;
-
-        my $current = $obj->FirstCustomFieldValue($cf_name);
-        $current = '' unless defined $current;
-
-        if (not length $current and not length $value) {
-            $RT::Logger->debug("\tCF.$cf_name\tskipping, no value in RT and GWS");
-            next;
-        }
-        elsif ($current eq $value) {
-            $RT::Logger->debug("\tCF.$cf_name\tunchanged => $value");
-            next;
-        }
-
-        $current = 'unset' unless length $current;
-        $RT::Logger->debug("\tCF.$cf_name\t$current => $value");
-        next unless $args{import};
-
-        my ($ok, $msg) = $obj->AddCustomFieldValue( Field => $cf_name, Value => $value );
-        $RT::Logger->error($obj->Name . ": Couldn't add value '$value' for '$cf_name': $msg")
-            unless $ok;
-    }
-}
-
-
 =head2 import_groups import => 1|0
 
 Takes the results of the search from C<run_group_search>
@@ -802,14 +560,18 @@ sub import_groups {
         my %group = (
             Name        => $entry->{'id'},
             Description => $entry->{'name'},
-            id          => $entry->{'regid'},
+            UWRegID     => $entry->{'regid'},
             Member_Attr => [],
         );
 
+        $RT::Logger->debug("finding members of group " . $group{Name});
         my @members = $self->_gws_search(search => 'group/' . $group{Name} . '/effective_member');
         while (my $member = shift @members) {
             if ($member->{'type'} eq 'uwnetid') {
                 push $group{Member_Attr}, $member;
+            }
+            else {
+                $RT::Logger->debug("skipping member $member->{id} of type $member->{type}");
             }
         }
 
@@ -876,7 +638,7 @@ Will try loading the group and will only create a new
 group if it can't find an existing group with the C<Name>
 or C<EmailAddress> arg passed in.
 
-If C<$GWSUpdateOnly> is true, we will not create new groups
+If C<$PWSUpdateOnly> is true, we will not create new groups
 but we will update existing ones.
 
 There is currently no way to prevent Group data from being
@@ -894,7 +656,7 @@ sub create_rt_group {
 
     $group = { map { $_ => $group->{$_} } qw(id Name Description) };
 
-    my $id = delete $group->{'id'};
+    my $regid = delete $group->{'UWRegID'};
 
     my $created;
     if ($group_obj->Id) {
@@ -907,7 +669,7 @@ sub create_rt_group {
             $self->_show_group_info( %args, rt_group => $group_obj );
         }
     } else {
-        if ( $RT::GWSUpdateOnly ) {
+        if ( $RT::PWSUpdateOnly ) {
             $RT::Logger->debug("Group $group->{Name} doesn't exist in RT, skipping");
             return;
         }
@@ -921,8 +683,8 @@ sub create_rt_group {
             $created = $val;
             $RT::Logger->debug("Created group for $group->{Name} with id ".$group_obj->Id);
 
-            if ( $id ) {
-                my ($val, $msg) = $group_obj->SetAttribute( Name => 'UWRegID-'.$id, Content => 1 );
+            if ( $regid ) {
+                my ($val, $msg) = $group_obj->SetAttribute( Name => 'UWRegID-'.$regid, Content => 1 );
                 unless ($val) {
                     $RT::Logger->error("couldn't set attribute: $msg");
                     return;
@@ -946,7 +708,7 @@ sub create_rt_group {
 
 =head3 find_rt_group
 
-Loads groups by Name and by the specified GWS id. Attempts to resolve
+Loads groups by Name and by the specified UWRegID. Attempts to resolve
 renames and other out-of-sync failures between RT and GWS.
 
 =cut
@@ -958,44 +720,44 @@ sub find_rt_group {
 
     my $group_obj = RT::Group->new($RT::SystemUser);
     $group_obj->LoadUserDefinedGroup( $group->{Name} );
-    return $group_obj unless $group->{'id'};
+    return $group_obj unless $group->{'UWRegID'};
 
     unless ( $group_obj->id ) {
-        $RT::Logger->debug("No group in RT named $group->{Name}. Looking by $group->{id} GWS id.");
-        $group_obj = $self->find_rt_group_by_gws_id( $group->{'id'} );
+        $RT::Logger->debug("No group in RT named $group->{Name}. Looking by $group->{UWRegID} UWRegID.");
+        $group_obj = $self->find_rt_group_by_regid( $group->{'UWRegID'} );
         unless ( $group_obj ) {
-            $RT::Logger->debug("No group in RT with GWS id $group->{id}. Creating a new one.");
+            $RT::Logger->debug("No group in RT with UWRegID $group->{UWRegID}. Creating a new one.");
             return RT::Group->new($RT::SystemUser);
         }
 
-        $RT::Logger->debug("No group in RT named $group->{Name}, but found group by GWS id $group->{id}. Renaming the group.");
+        $RT::Logger->debug("No group in RT named $group->{Name}, but found group by UWRegID $group->{UWRegID}. Renaming the group.");
         # $group->Update will take care of the name
         return $group_obj;
     }
 
-    my $attr_name = 'UWRegID-'. $group->{'id'};
+    my $attr_name = 'UWRegID-'. $group->{'UWRegID'};
     my $rt_gid = $group_obj->FirstAttribute( $attr_name );
     return $group_obj if $rt_gid;
 
-    my $other_group = $self->find_rt_group_by_gws_id( $group->{'id'} );
+    my $other_group = $self->find_rt_group_by_regid( $group->{'UWRegID'} );
     if ( $other_group ) {
-        $RT::Logger->debug("Group with GWS id $group->{id} exists, as well as group named $group->{Name}. Renaming both.");
+        $RT::Logger->debug("Group with UWRegID $group->{UWRegID} exists, as well as group named $group->{Name}. Renaming both.");
     }
     elsif ( grep $_->Name =~ /^UWRegID-/, @{ $group_obj->Attributes->ItemsArrayRef } ) {
-        $RT::Logger->debug("No group in RT with GWS id $group->{id}, but group $group->{Name} has id. Renaming the group and creating a new one.");
+        $RT::Logger->debug("No group in RT with UWRegID $group->{UWRegID}, but group $group->{Name} has id. Renaming the group and creating a new one.");
     }
     else {
-        $RT::Logger->debug("No group in RT with GWS id $group->{id}, but group $group->{Name} exists and has no GWS id. Assigning the id to the group.");
+        $RT::Logger->debug("No group in RT with UWRegID $group->{UWRegID}, but group $group->{Name} exists and has no UWRegID. Assigning the id to the group.");
         if ( $args{import} ) {
             my ($status, $msg) = $group_obj->SetAttribute( Name => $attr_name, Content => 1 );
             unless ( $status ) {
                 $RT::Logger->error("Couldn't set attribute: $msg");
                 return undef;
             }
-            $RT::Logger->debug("Assigned $group->{id} GWS group id to $group->{Name}");
+            $RT::Logger->debug("Assigned $group->{UWRegID} UWRegID to $group->{Name}");
         }
         else {
-            $RT::Logger->debug( "Group $group->{'Name'} gets GWS id $group->{id}" );
+            $RT::Logger->debug( "Group $group->{'Name'} gets UWRegID $group->{UWRegID}" );
         }
 
         return $group_obj;
@@ -1021,22 +783,22 @@ sub find_rt_group {
 }
 
 
-=head3 find_rt_group_by_gws_id
+=head3 find_rt_group_by_regid
 
 Loads an RT::Group by the gws provided id (different from RT's internal group
 id)
 
 =cut
 
-sub find_rt_group_by_gws_id {
+sub find_rt_group_by_regid {
     my $self = shift;
-    my $id = shift;
+    my $regid = shift;
 
     my $groups = RT::Groups->new( RT->SystemUser );
     $groups->LimitToUserDefinedGroups;
     my $attr_alias = $groups->Join( FIELD1 => 'id', TABLE2 => 'Attributes', FIELD2 => 'ObjectId' );
     $groups->Limit( ALIAS => $attr_alias, FIELD => 'ObjectType', VALUE => 'RT::Group' );
-    $groups->Limit( ALIAS => $attr_alias, FIELD => 'Name', VALUE => 'UWRegID-'. $id );
+    $groups->Limit( ALIAS => $attr_alias, FIELD => 'Name', VALUE => 'UWRegID-'. $regid );
     return $groups->First;
 }
 
