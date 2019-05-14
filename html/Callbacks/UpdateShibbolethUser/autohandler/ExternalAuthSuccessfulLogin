@@ -25,11 +25,13 @@ my %newgroups;
 
 my $principal = $UserObj->PrincipalObj;
 
+my $gwsstem = quotemeta RT->Config->Get('GWSGroupStem');
+
 # add to groups they are supposed to be in
 my @groups = split(/;/, RT::Interface::Web::RequestENV('gws_groups'));
 foreach my $gwsgroup (@groups) {
     # not in the GWS stem we want
-    next unless $gwsgroup =~ /^urn:mace:washington.edu:groups:(uw_asa_it_sm(_.*)?)$/;
+    next unless $gwsgroup =~ /^urn:mace:washington.edu:groups:($gwsstem(_.*)?)$/;
     my $groupname = $1;
 
     $newgroups{$groupname} = 1;
@@ -54,7 +56,7 @@ foreach my $gwsgroup (@groups) {
 my $groups = $UserObj->OwnGroups;
 while (my $group = $groups->Next()) {
     # not a GWS group
-    next unless $group->Name =~ /^uw_asa_it_sm(_.*)?$/;
+    next unless $group->Name =~ /^$gwsstem(_.*)?$/;
 
     # membership is current
     next if ($newgroups{$group->Name});
