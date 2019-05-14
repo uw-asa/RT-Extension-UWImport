@@ -601,12 +601,12 @@ Set up the appropriate arguments for a listing of users.
 sub run_group_search {
     my $self = shift;
 
-    unless ($RT::GWSGroupSearch) {
+    unless ($RT::GWSGroupStem) {
         $RT::Logger->warn("Not running a group import, configuration not set");
         return;
     }
     $self->_gws_search(
-        search => $RT::GWSGroupSearch
+        search => 'search?stem=' . $RT::GWSGroupStem
     );
 
 }
