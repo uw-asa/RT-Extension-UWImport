@@ -1,7 +1,5 @@
 <%perl>
 
-use Data::Dumper;
-
 my $UserObj = RT::User->new(RT->SystemUser);
 $UserObj->Load($HTML::Mason::Commands::session{'CurrentUser'}->id);
 
