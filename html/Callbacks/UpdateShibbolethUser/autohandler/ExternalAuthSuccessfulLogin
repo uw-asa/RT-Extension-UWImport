@@ -11,7 +11,7 @@ my $user_info = {
 };
 
 # set the attributes that have been defined.
-foreach my $attribute ( $UserObj->WritableAttributes, qw(Privileged Disabled) ) {
+foreach my $attribute ( $UserObj->WritableAttributes ) {
     my $method = "Set$attribute";
     $UserObj->$method( $user_info->{$attribute} ) if defined $user_info->{$attribute};
 }
@@ -65,6 +65,17 @@ while (my $group = $groups->Next()) {
         $RT::Logger->debug("Removed ".$UserObj->Name." from ".$group->Name." [$msg]");
     } else {
         $RT::Logger->error("Couldn't remove ".$UserObj->Name." from ".$group->Name." [$msg]");
+    }
+}
+
+# self-service only unless they are in one of our groups
+my $priv = keys %newgroups;
+if ( ($priv and not $UserObj->Privileged) or (not $priv and $UserObj->Privileged) ) {
+    my ($status, $msg) = $UserObj->SetPrivileged($priv);
+    if ($status) {
+        $RT::Logger->debug("Set ".$UserObj->Name." to ".($priv?"Privileged":"Unprivileged")." [$msg]");
+    } else {
+        $RT::Logger->error("Couldn't set ".$UserObj->Name." to ".($priv?"Privileged":"Unprivileged")." [$msg]");
     }
 }
 
