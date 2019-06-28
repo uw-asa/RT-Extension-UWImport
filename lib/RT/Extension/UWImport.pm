@@ -4,7 +4,8 @@ package RT::Extension::UWImport;
 use base qw(Class::Accessor);
 __PACKAGE__->mk_accessors(qw(_gws _pws _group _users));
 use Carp;
-use LWP::UserAgent::JSON();
+use LWP::UserAgent ();
+use JSON;
 use Data::Dumper;
 
 
@@ -146,7 +147,7 @@ sub connect_gws {
     my $self = shift;
 
     $RT::GWSOptions = [] unless $RT::GWSOptions;
-    my $gws = LWP::UserAgent::JSON->new(@$RT::GWSOptions);
+    my $gws = LWP::UserAgent->new(@$RT::GWSOptions);
 
     $self->_gws($gws);
     return $gws;
@@ -165,7 +166,7 @@ sub connect_pws {
     my $self = shift;
 
     $RT::PWSOptions = [] unless $RT::PWSOptions;
-    my $pws = LWP::UserAgent::JSON->new(@$RT::PWSOptions);
+    my $pws = LWP::UserAgent->new(@$RT::PWSOptions);
 
     $self->_pws($pws);
     return $pws;
@@ -197,7 +198,7 @@ sub _gws_search {
         $RT::Logger->error("GWS search " . $search . " failed: " . $result->message);
     }
 
-    my $content = $result->json_content;
+    my $content = decode_json($result->decoded_content);
 
     push @results, @{$content->{'data'}};
 
@@ -232,7 +233,7 @@ sub _pws_search {
         return undef;
     }
 
-    return $result->json_content;
+    return decode_json($result->decoded_content);
 }
 
 
