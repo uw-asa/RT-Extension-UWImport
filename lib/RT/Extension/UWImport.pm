@@ -578,7 +578,7 @@ sub import_groups {
         my @members = $self->_gws_search(search => 'group/' . $group{Name} . '/effective_member');
         while (my $member = shift @members) {
             if ($member->{'type'} eq 'uwnetid') {
-                push $group{Member_Attr}, $member;
+                push @{$group{Member_Attr}}, $member;
             }
             else {
                 $RT::Logger->debug("skipping member $member->{id} of type $member->{type}");
