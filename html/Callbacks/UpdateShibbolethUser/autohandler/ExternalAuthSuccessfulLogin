@@ -5,7 +5,7 @@ $UserObj->Load($HTML::Mason::Commands::session{'CurrentUser'}->id);
 
 my $user_info = {
     EmailAddress    => RT::Interface::Web::RequestENV('mail') || RT::Interface::Web::RequestENV('uwnetid') . '@uw.edu',
-    RealName        => RT::Interface::Web::RequestENV('cn') || RT::Interface::Web::RequestENV('displayName'),
+    RealName        => RT::Interface::Web::RequestENV('displayName') || RT::Interface::Web::RequestENV('cn'),
     Organization    => RT::Interface::Web::RequestENV('department'),
     WorkPhone       => RT::Interface::Web::RequestENV('phone'),
 };
