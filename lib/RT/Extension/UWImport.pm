@@ -229,7 +229,11 @@ sub _pws_search {
     my $result = $pws->get(join('/', ($RT::PWSHost, $search)));
 
     if (! $result->is_success) {
-        $RT::Logger->warning("PWS search " . $search . " failed: " . $result->message);
+	if ($result->code == 404) {
+	    $RT::Logger->notice("PWS not found " . $search . " failed: " . $result->message);
+	} else {
+	    $RT::Logger->warning("PWS search " . $search . " failed: " . $result->message);
+	}
         return undef;
     }
 
