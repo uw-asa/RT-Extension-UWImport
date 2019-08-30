@@ -54,7 +54,7 @@ use warnings;
 BEGIN { # BEGIN RT CMD BOILERPLATE
     require File::Spec;
     require Cwd;
-    ### after:     my @libs = ("@RT_LIB_PATH@", "@LOCAL_LIB_PATH@", "lib");
+### after:     my @libs = ("@RT_LIB_PATH@", "@LOCAL_LIB_PATH@", "lib");
     my @libs = ("/opt/rt4/lib", "/opt/rt4/local/lib", "lib");
     my $bin_path;
 

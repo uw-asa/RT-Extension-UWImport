@@ -7,8 +7,8 @@ repository 'https://github.com/uw-it-cte/rt-extension-uwimport';
 requires_rt '4.2.0';
 rt_too_new '4.6.0';
 
-my ($lp) = ($INC{'RT.pm'} =~ /^(.*)[\\\/]/);
-my $lib_path = join( ' ', "$RT::LocalPath/lib", $lp );
+my ($lib_path) = $INC{'RT.pm'} =~ /^(.*)[\\\/]/;
+my $local_lib_path = "$RT::LocalPath/lib";
 
 # Straight from perldoc perlvar
 use Config;
@@ -18,9 +18,9 @@ if ($^O ne 'VMS') {
         unless $secure_perl_path =~ m/$Config{_exe}$/i;
 }
 
-substitute(
-    {
-        RT_LIB_PATH  => $lib_path,
+substitute( {
+        RT_LIB_PATH => $lib_path,
+        LOCAL_LIB_PATH => $local_lib_path,
         PERL         => $ENV{PERL} || $secure_perl_path,
     },
     {
