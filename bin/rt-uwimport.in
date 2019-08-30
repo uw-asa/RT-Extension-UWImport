@@ -90,10 +90,10 @@ Init(
 my $importer = RT::Extension::UWImport->new;
 
 if ($OPT{import}) {
-    print "Starting import\n";
+    print "Starting import\n" if $OPT{verbose};
     $importer->import_groups(import => 1);
 
-    print "Finished import\n";
+    print "Finished import\n" if $OPT{verbose};
 } else {
     print <<TESTING;
 Running test import, no data will be changed

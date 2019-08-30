@@ -55,7 +55,7 @@ BEGIN { # BEGIN RT CMD BOILERPLATE
     require File::Spec;
     require Cwd;
 ### after:     my @libs = ("@RT_LIB_PATH@", "@LOCAL_LIB_PATH@", "lib");
-    my @libs = ("/opt/rt4/lib", "/opt/rt4/local/lib", "lib");
+    my @libs = ("/usr/share/request-tracker4/lib", "/usr/local/share/request-tracker4/lib", "lib");
     my $bin_path;
 
     for my $lib (@libs) {
@@ -90,10 +90,10 @@ Init(
 my $importer = RT::Extension::UWImport->new;
 
 if ($OPT{import}) {
-    print "Starting import\n";
+    print "Starting import\n" if $OPT{verbose};
     $importer->import_groups(import => 1);
 
-    print "Finished import\n";
+    print "Finished import\n" if $OPT{verbose};
 } else {
     print <<TESTING;
 Running test import, no data will be changed
