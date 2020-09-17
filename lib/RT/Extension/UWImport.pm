@@ -996,18 +996,11 @@ sub CanonicalizeUserInfo {
         return ($found, %params);
 
     } else {
-        $params{Name}            = $pws_entry->{UWNetID};
-        $params{RealName}        = $pws_entry->{DisplayName};
-        $params{EmailAddress}    = $pws_entry->{PersonAffiliations}{EmployeePersonAffiliation}{EmployeeWhitePages}{EmailAddresses}[0];
-        $params{WorkPhone}       = $pws_entry->{PersonAffiliations}{EmployeePersonAffiliation}{EmployeeWhitePages}{Phones}[0];
-        $params{MobilePhone}     = $pws_entry->{PersonAffiliations}{EmployeePersonAffiliation}{EmployeeWhitePages}{Mobiles}[0];
-        $params{PagerPhone}      = $pws_entry->{PersonAffiliations}{EmployeePersonAffiliation}{EmployeeWhitePages}{Pagers}[0];
-        $params{Organization}    = $pws_entry->{PersonAffiliations}{EmployeePersonAffiliation}{HomeDepartment};
+        my $user = $uwimport->_build_user_object( pws_entry => $pws_entry );
+        %params = %$user;
 
         $found = 1;
     }
-
-    delete @params{ grep { not defined $params{$_} } keys %params };
 
     return ($found, %params);
 }
