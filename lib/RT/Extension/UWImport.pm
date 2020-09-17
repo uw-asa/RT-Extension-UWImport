@@ -961,4 +961,116 @@ sub _show_group_info {
 }
 
 
+sub CanonicalizeUserInfo {
+
+    my ($service, $key, $value) = @_;
+
+    my $found = 0;
+    my %params = (Name         => undef,
+                  EmailAddress => undef,
+                  RealName     => undef);
+
+    # Get a UWImport object
+    my $uwimport = RT::Extension::UWImport->new;
+
+    # Jump to the next external information service if we can't get one,
+    return ($found, %params) unless ($uwimport);
+
+    # Do a search for them in PWS
+    $RT::Logger->debug( "PWS Search === ",
+                        $key,
+                        ":",
+                        $value);
+
+    my $pws_entry = $uwimport->_pws_search(search  => 'person/' . $value . '/full.json');
+
+    # If we didn't get at LEAST a partial result, just die now.
+    if (!$pws_entry) {
+        $RT::Logger->critical(  (caller(0))[3],
+                                ": Search for ",
+                                $value,
+                                " failed");
+        # $found remains as 0
+
+        # Drop out to the next external information service
+        return ($found, %params);
+
+    } else {
+        $params{Name}            = $pws_entry->{UWNetID};
+        $params{RealName}        = $pws_entry->{DisplayName};
+        $params{EmailAddress}    = $pws_entry->{PersonAffiliations}{EmployeePersonAffiliation}{EmployeeWhitePages}{EmailAddresses}[0];
+        $params{WorkPhone}       = $pws_entry->{PersonAffiliations}{EmployeePersonAffiliation}{EmployeeWhitePages}{Phones}[0];
+        $params{MobilePhone}     = $pws_entry->{PersonAffiliations}{EmployeePersonAffiliation}{EmployeeWhitePages}{Mobiles}[0];
+        $params{PagerPhone}      = $pws_entry->{PersonAffiliations}{EmployeePersonAffiliation}{EmployeeWhitePages}{Pagers}[0];
+        $params{Organization}    = $pws_entry->{PersonAffiliations}{EmployeePersonAffiliation}{HomeDepartment};
+
+        $found = 1;
+    }
+
+    delete @params{ grep { not defined $params{$_} } keys %params };
+
+    return ($found, %params);
+}
+
+
+package RT::User;
+
+
+=head2 CanonicalizeUserInfoFromUWImport
+
+Convert a pws entry in to fields that can be used by RT.
+
+=cut
+
+sub CanonicalizeUserInfoFromUWImport {
+
+    # Careful, this $args hashref was given to RT::User::CanonicalizeUserInfo and
+    # then transparently passed on to this function. The whole purpose is to update
+    # the original hash as whatever passed it to RT::User is expecting to continue its
+    # code with an update args hash.
+
+    my $UserObj = shift;
+    my $args    = shift;
+
+    my $found   = 0;
+    my %params  = (Name         => undef,
+                   EmailAddress => undef,
+                   RealName     => undef);
+
+    $RT::Logger->debug( (caller(0))[3],
+                        "called by",
+                        caller,
+                        "with:",
+                        join(", ", map {sprintf("%s: %s", $_, ($args->{$_} ? $args->{$_} : ''))}
+                            sort(keys(%$args))));
+
+    $RT::Logger->debug( "Attempting to get user info using PWS");
+
+    ($found, %params) = RT::Extension::UWImport::CanonicalizeUserInfo('uwimport', 'UWNetID', $args->{Name});
+
+    # If found, Canonicalize Email Address and
+    # update the args hash that we were given the hashref for
+    if ($found) {
+        # It's important that we always have a canonical email address
+        if ($params{'EmailAddress'}) {
+            $params{'EmailAddress'} = $UserObj->CanonicalizeEmailAddress($params{'EmailAddress'});
+        }
+        %$args = (%$args, %params);
+    }
+
+    $RT::Logger->info(  (caller(0))[3],
+                        "returning",
+                        join(", ", map {sprintf("%s: %s", $_, ($args->{$_} ? $args->{$_} : ''))}
+                            sort(keys(%$args))));
+
+    ### HACK: The config var below is to overcome the (IMO) bug in
+    ### RT::User::Create() which expects this function to always
+    ### return true or rejects the user for creation. This should be
+    ### a different config var (CreateUncanonicalizedUsers) and
+    ### should be honored in RT::User::Create()
+    return(defined $found || RT->Config->Get('AutoCreateNonExternalUsers'));
+
+}
+
+
 1;
