@@ -1,0 +1,15 @@
+<%args>
+$User
+$display
+$system_user    
+</%args>
+<%perl>
+
+return if $system_user->{$User->id};
+return if $User->Name =~ /@/;
+return unless -$User->LastUpdatedObj->Diff() > 60 * 60 * 24 * 7;
+
+use RT::Authen::ExternalAuth;
+RT::Authen::ExternalAuth::UpdateUserInfo($User->Name);
+
+</%perl>
