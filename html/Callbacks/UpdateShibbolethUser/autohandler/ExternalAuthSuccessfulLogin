@@ -51,7 +51,13 @@ foreach my $gwsgroup (@groups) {
 }
 
 # remove from groups they are not supposed to be in
-my $groups = $UserObj->OwnGroups;
+my $groups = RT::Groups->new(RT->SystemUser);
+$groups->LimitToUserDefinedGroups;
+$groups->WithMember(
+    PrincipalId => $UserObj->Id,
+    Recursively => 0
+);
+
 while (my $group = $groups->Next()) {
     # not a GWS group
     next unless $group->Name =~ /^$gwsstem(_.*)?$/;
