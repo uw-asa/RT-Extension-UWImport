@@ -5,6 +5,7 @@ $system_user
 </%args>
 <%perl>
 
+return unless $User;
 return if $system_user->{$User->id};
 return if $User->Name =~ /@/;
 return unless -$User->LastUpdatedObj->Diff() > 60 * 60 * 24 * 7;
