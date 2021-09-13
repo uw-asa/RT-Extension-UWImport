@@ -3,6 +3,12 @@
 my $UserObj = RT::User->new(RT->SystemUser);
 $UserObj->Load($HTML::Mason::Commands::session{'CurrentUser'}->id);
 
+my ($val, $msg) = $UserObj->SetAttribute( Name => 'UWImportChecked', Content => time() );
+unless ($val) {
+    $RT::Logger->error("couldn't set attribute: $msg");
+    return;
+}
+
 my $user_info = {
     EmailAddress    => RT::Interface::Web::RequestENV('mail') || RT::Interface::Web::RequestENV('uwnetid') . '@uw.edu',
     RealName        => RT::Interface::Web::RequestENV('displayName') || RT::Interface::Web::RequestENV('cn'),

@@ -7,8 +7,20 @@ $system_user
 
 return unless $User;
 return if $system_user->{$User->id};
+return if $User->Name eq 'root';
 return if $User->Name =~ /@/;
-return unless -$User->LastUpdatedObj->Diff() > 60 * 60 * 24 * 7;
+
+if (my $checked = $User->FirstAttribute( 'UWImportChecked' )) {
+    $checked = $checked->Content;
+#    $RT::Logger->warning($User->Name . " last checked : $checked");
+    return if time() - $checked < 60 * 60 * 24 * 7;
+}
+
+my ($val, $msg) = $User->SetAttribute( Name => 'UWImportChecked', Content => time() );
+unless ($val) {
+    $RT::Logger->error("couldn't set attribute: $msg");
+    return;
+}
 
 use RT::Authen::ExternalAuth;
 RT::Authen::ExternalAuth::UpdateUserInfo($User->Name);

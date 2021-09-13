@@ -463,6 +463,13 @@ sub create_rt_user {
     unless ($user_obj->Id) {
         $RT::Logger->error("We couldn't find or create $user->{Name}. This should never happen");
     }
+
+    my ($val, $msg) = $user_obj->SetAttribute( Name => 'UWImportChecked', Content => time() );
+    unless ($val) {
+        $RT::Logger->error("couldn't set attribute: $msg");
+        return;
+    }
+
     return $user_obj;
 
 }
