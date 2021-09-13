@@ -274,6 +274,9 @@ together with a single space.
 By default users are created as Unprivileged, but you can change this by
 setting C<$GWSCreatePrivileged> to 1.
 
+If you also set C<$GWSUpdatePrivileged> to 1, existing users who meet the
+criteria for import, will be set to Privileged.
+
 =cut
 
 sub _import_users {
@@ -431,6 +434,9 @@ sub create_rt_user {
             $RT::Logger->debug("$message, updating their data");
             if ($args{import}) {
                 my @results = $user_obj->Update( ARGSRef => $user, AttributesRef => [keys %$user] );
+                if ($RT::GWSUpdatePrivileged) {
+                    $user_obj->SetPrivileged(1);
+                }
                 $RT::Logger->debug(join("\n",@results)||'no change');
             } else {
                 $RT::Logger->debug("Found existing user $user->{Name} to update");
